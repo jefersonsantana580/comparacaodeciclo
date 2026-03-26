@@ -12,7 +12,7 @@ import streamlit as st
 # CONFIGURAÇÃO DA PÁGINA
 # =====================================================
 st.set_page_config(
-    page_title="Passo 1 — Comparativo Mensal",
+    page_title="Comparativo Request Vs Plan",
     layout="wide"
 )
 
