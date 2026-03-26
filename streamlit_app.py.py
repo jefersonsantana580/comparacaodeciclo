@@ -9,10 +9,10 @@ import pandas as pd
 import streamlit as st
 
 # =====================================================
-# CONFIG
+# CONFIGURAÇÃO DA PÁGINA
 # =====================================================
 st.set_page_config(
-    page_title="Comparativo de Ciclo - Passo 1",
+    page_title="Passo 1 — Comparativo Mensal",
     layout="wide"
 )
 
@@ -22,18 +22,14 @@ st.caption(
     "PRODUCT NEED e PRODUCT SERIES."
 )
 
-PT_BR_MESES = [
-    "jan", "fev", "mar", "abr", "mai", "jun",
-    "jul", "ago", "set", "out", "nov", "dez"
-]
-
+PT_BR_MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"]
 MES_RE = re.compile(
     r'^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/\d{2}$',
     re.IGNORECASE
 )
 
 # =====================================================
-# FUNÇÕES AUXILIARES
+# FUNÇÕES UTILITÁRIAS
 # =====================================================
 def _normalize_header(col):
     if isinstance(col, (pd.Timestamp, dt.date)):
@@ -47,8 +43,7 @@ def _normalize_header(col):
         s
     )
     if m:
-        yy = m.group(2)[-2:]
-        return f"{m.group(1)}/{yy}"
+        return f"{m.group(1)}/{m.group(2)[-2:]}"
 
     m = re.match(
         r"^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)(\d{2})$",
@@ -88,7 +83,7 @@ def colorir_valores(val):
     if isinstance(val, (int, float)):
         if val < 0:
             return "color: red; font-weight: bold;"
-        if val > 0:
+        elif val > 0:
             return "color: green; font-weight: bold;"
     return ""
 
@@ -97,25 +92,25 @@ def colorir_valores(val):
 # =====================================================
 def gerar_passo1(xlsx_bytes, show_debug=False):
 
-    with pd.ExcelFile(io.BytesIO(xlsx_bytes), engine="openpyxl") as xls:
-        if "PLAN" not in xls.sheet_names or "REQUEST" not in xls.sheet_names:
-            raise ValueError("O arquivo precisa conter as abas PLAN e REQUEST.")
+    # ----------------------------
+    # Ler Excel original
+    # ----------------------------
+    xls_original = pd.ExcelFile(io.BytesIO(xlsx_bytes), engine="openpyxl")
+    plan = pd.read_excel(xls_original, "PLAN", engine="openpyxl")
+    req  = pd.read_excel(xls_original, "REQUEST", engine="openpyxl")
 
-        plan = pd.read_excel(xls, "PLAN")
-        req = pd.read_excel(xls, "REQUEST")
-
-    # -------------------------------------------------
-    # DETECTAR MESES
-    # -------------------------------------------------
+    # ----------------------------
+    # Detectar meses
+    # ----------------------------
     meses_plan, map_plan = detectar_colunas_mes(plan)
-    meses_req, map_req = detectar_colunas_mes(req)
+    meses_req,  map_req  = detectar_colunas_mes(req)
     meses = list(dict.fromkeys(meses_plan + meses_req))
 
     if not meses:
         raise ValueError("Nenhuma coluna de mês no padrão pt-BR foi encontrada.")
 
     plan = garantir_numerico(plan, meses)
-    req = garantir_numerico(req, meses)
+    req  = garantir_numerico(req, meses)
 
     if show_debug:
         st.subheader("Diagnóstico de colunas - PLAN")
@@ -123,27 +118,27 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         st.subheader("Diagnóstico de colunas - REQUEST")
         st.json(map_req)
 
-    # -------------------------------------------------
-    # FILTROS
-    # -------------------------------------------------
+    # ----------------------------
+    # Filtros
+    # ----------------------------
     st.subheader("Filtros")
 
-    def filtro(df, col):
+    def filtro_mult(df, col):
         if col not in df.columns:
             return None
-        valores = sorted(df[col].dropna().unique())
-        return st.multiselect(col, valores, default=valores)
+        vals = sorted(df[col].dropna().unique())
+        return st.multiselect(col, vals, default=vals)
 
     c1, c2, c3, c4 = st.columns(4)
 
     with c1:
-        f_brand = filtro(plan, "PRODUCT BRAND")
+        f_brand = filtro_mult(plan, "PRODUCT BRAND")
     with c2:
-        f_market = filtro(plan, "PRODUCT MARKET")
+        f_market = filtro_mult(plan, "PRODUCT MARKET")
     with c3:
-        f_site = filtro(plan, "SITE")
+        f_site = filtro_mult(plan, "SITE")
     with c4:
-        f_need = filtro(plan, "PRODUCT NEED")
+        f_need = filtro_mult(plan, "PRODUCT NEED")
 
     def aplicar_filtros(df):
         if f_brand is not None:
@@ -157,7 +152,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         return df
 
     plan = aplicar_filtros(plan)
-    req = aplicar_filtros(req)
+    req  = aplicar_filtros(req)
 
     # =================================================
     # TABELA 1 — PRODUCT NEED + PRODUCT SERIES
@@ -180,13 +175,10 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         total_s[m] = int(step1_serie[m].sum())
     total_s["TOTAL"] = int(step1_serie["TOTAL"].sum())
 
-    step1_serie = pd.concat(
-        [step1_serie, pd.DataFrame([total_s])],
-        ignore_index=True
-    )
+    step1_serie = pd.concat([step1_serie, pd.DataFrame([total_s])], ignore_index=True)
 
     # =================================================
-    # TABELA 2 — APENAS PRODUCT NEED
+    # TABELA 2 — PRODUCT NEED
     # =================================================
     grp_need = ["SITE", "PRODUCT NEED"]
 
@@ -206,50 +198,24 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         total_n[m] = int(step1_need[m].sum())
     total_n["TOTAL"] = int(step1_need["TOTAL"].sum())
 
-    step1_need = pd.concat(
-        [step1_need, pd.DataFrame([total_n])],
-        ignore_index=True
-    )
+    step1_need = pd.concat([step1_need, pd.DataFrame([total_n])], ignore_index=True)
 
-    
-# =================================================
-# EXPORTAR EXCEL (MANTENDO ABAS ORIGINAIS)
-# =================================================
-buf_out = io.BytesIO()
+    # =================================================
+    # EXPORTAR EXCEL — MANTENDO ABAS ORIGINAIS
+    # =================================================
+    buf_out = io.BytesIO()
 
-# Reabrir o Excel ORIGINAL enviado pelo usuário
-xls_in = pd.ExcelFile(io.BytesIO(xlsx_bytes), engine="openpyxl")
+    with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
+        # Copiar abas originais SEM ALTERAR
+        for sheet in xls_original.sheet_names:
+            df_original = pd.read_excel(xls_original, sheet_name=sheet, engine="openpyxl")
+            df_original.to_excel(writer, sheet_name=sheet, index=False)
 
-with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
-    # Copiar todas as abas originais SEM MODIFICAR
-    for sheet in xls_in.sheet_names:
-        df_original = pd.read_excel(
-            xls_in,
-            sheet_name=sheet,
-            engine="openpyxl"
-        )
-        df_original.to_excel(
-            writer,
-            sheet_name=sheet,
-            index=False
-        )
+        # Abas novas
+        step1_serie.to_excel(writer, "Step1_Comparativo_Serie", index=False)
+        step1_need.to_excel(writer, "Step1_Comparativo_Need", index=False)
 
-    # Adicionar as novas abas no final
-    step1_serie.to_excel(
-        writer,
-        sheet_name="Step1_Comparativo_Serie",
-        index=False
-    )
-
-    step1_need.to_excel(
-        writer,
-        sheet_name="Step1_Comparativo_Need",
-        index=False
-    )
-
-return buf_out.getvalue(), step1_serie, step1_need
-``
-
+    return buf_out.getvalue(), step1_serie, step1_need
 
 # =====================================================
 # UI
@@ -263,24 +229,15 @@ debug = st.checkbox("Exibir diagnóstico de colunas", value=False)
 
 if uploaded:
     try:
-        excel_out, df_serie, df_need = gerar_passo1(
-            uploaded.read(),
-            show_debug=debug
-        )
+        excel_out, df_serie, df_need = gerar_passo1(uploaded.read(), show_debug=debug)
 
         st.success("Processamento concluído ✅")
 
         st.subheader("Comparativo por PRODUCT NEED + PRODUCT SERIES")
-        st.dataframe(
-            df_serie.style.applymap(colorir_valores),
-            use_container_width=True
-        )
+        st.dataframe(df_serie.style.applymap(colorir_valores), use_container_width=True)
 
         st.subheader("Resumo por PRODUCT NEED")
-        st.dataframe(
-            df_need.style.applymap(colorir_valores),
-            use_container_width=True
-        )
+        st.dataframe(df_need.style.applymap(colorir_valores), use_container_width=True)
 
         st.download_button(
             "⬇️ Baixar Excel",
