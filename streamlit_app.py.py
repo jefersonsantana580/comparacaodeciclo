@@ -16,7 +16,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("Passo 1 — Comparativo Mensal")
+st.title("Comparativo Request Vs Plan")
 st.caption(
     "Comparativo REQUEST − PLAN com filtros e resumos por "
     "PRODUCT NEED e PRODUCT SERIES."
