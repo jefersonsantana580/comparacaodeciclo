@@ -215,35 +215,19 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     # EXPORTAR EXCEL
     # =================================================
     
+
 buf_out = io.BytesIO()
-
-# Reabrir o Excel original
-xls_in = pd.ExcelFile(io.BytesIO(xlsx_bytes), engine="openpyxl")
-
 with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
-    # Copiar todas as abas originais SEM ALTERAR
-    for sheet in xls_in.sheet_names:
-        df_original = pd.read_excel(xls_in, sheet_name=sheet)
-        df_original.to_excel(
-            writer,
-            sheet_name=sheet,
-            index=False
-        )
-
-    # Adicionar as novas abas
     step1_serie.to_excel(
         writer,
         sheet_name="Step1_Comparativo_Serie",
         index=False
     )
-
     step1_need.to_excel(
         writer,
         sheet_name="Step1_Comparativo_Need",
         index=False
     )
-
-
 
 # =====================================================
 # UI
