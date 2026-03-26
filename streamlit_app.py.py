@@ -154,8 +154,32 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     plan = aplicar_filtros(plan)
     req  = aplicar_filtros(req)
 
+    
+     # =================================================
+    # TABELA 1 — PRODUCT NEED
     # =================================================
-    # TABELA 1 — PRODUCT NEED + PRODUCT SERIES
+    grp_need = ["SITE", "PRODUCT NEED"]
+
+    plan_n = plan[grp_need + meses].groupby(grp_need, dropna=False)[meses].sum().reset_index()
+    req_n  = req [grp_need + meses].groupby(grp_need, dropna=False)[meses].sum().reset_index()
+
+    comp_n = pd.merge(plan_n, req_n, on=grp_need, how="outer", suffixes=("_PLAN", "_REQ"))
+
+    for m in meses:
+        comp_n[m] = comp_n.get(f"{m}_REQ", 0).fillna(0) - comp_n.get(f"{m}_PLAN", 0).fillna(0)
+
+    step1_need = comp_n[grp_need + meses].copy()
+    step1_need["TOTAL"] = step1_need[meses].sum(axis=1)
+
+    total_n = {c: "TOTAL GERAL" for c in grp_need}
+    for m in meses:
+        total_n[m] = int(step1_need[m].sum())
+    total_n["TOTAL"] = int(step1_need["TOTAL"].sum())
+
+    step1_need = pd.concat([step1_need, pd.DataFrame([total_n])], ignore_index=True)
+    
+    # =================================================
+    # TABELA 2 — PRODUCT NEED + PRODUCT SERIES
     # =================================================
     grp_serie = ["SITE", "PRODUCT NEED", "PRODUCT SERIES"]
 
@@ -177,29 +201,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
 
     step1_serie = pd.concat([step1_serie, pd.DataFrame([total_s])], ignore_index=True)
 
-    # =================================================
-    # TABELA 2 — PRODUCT NEED
-    # =================================================
-    grp_need = ["SITE", "PRODUCT NEED"]
-
-    plan_n = plan[grp_need + meses].groupby(grp_need, dropna=False)[meses].sum().reset_index()
-    req_n  = req [grp_need + meses].groupby(grp_need, dropna=False)[meses].sum().reset_index()
-
-    comp_n = pd.merge(plan_n, req_n, on=grp_need, how="outer", suffixes=("_PLAN", "_REQ"))
-
-    for m in meses:
-        comp_n[m] = comp_n.get(f"{m}_REQ", 0).fillna(0) - comp_n.get(f"{m}_PLAN", 0).fillna(0)
-
-    step1_need = comp_n[grp_need + meses].copy()
-    step1_need["TOTAL"] = step1_need[meses].sum(axis=1)
-
-    total_n = {c: "TOTAL GERAL" for c in grp_need}
-    for m in meses:
-        total_n[m] = int(step1_need[m].sum())
-    total_n["TOTAL"] = int(step1_need["TOTAL"].sum())
-
-    step1_need = pd.concat([step1_need, pd.DataFrame([total_n])], ignore_index=True)
-
+   
     # =================================================
     # EXPORTAR EXCEL — MANTENDO ABAS ORIGINAIS
     # =================================================
