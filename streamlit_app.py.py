@@ -215,7 +215,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     # EXPORTAR EXCEL
     # =================================================
     
-uf_out = io.BytesIO()
+buf_out = io.BytesIO()
 
 # Reabrir o Excel original
 xls_in = pd.ExcelFile(io.BytesIO(xlsx_bytes), engine="openpyxl")
