@@ -1,164 +1,274 @@
 
 # streamlit_app.py
 # -*- coding: utf-8 -*-
+
 import io
 import re
 import datetime as dt
-from pathlib import Path
-
 import pandas as pd
 import streamlit as st
 
-PT_BR_MESES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez']
-MES_RE = re.compile(r'^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/\d{2}$', re.IGNORECASE)
+# =====================================================
+# CONFIG
+# =====================================================
+st.set_page_config(
+    page_title="Comparativo de Ciclo - Passo 1",
+    layout="wide"
+)
 
-st.set_page_config(page_title="Comparativo de Ciclo - Passo 1", layout="wide")
-st.title("Passo 1 — Comparativo Mensal por PRODUCT SERIES (REQUEST − PLAN)")
-st.caption("Lê PLAN e REQUEST, detecta meses pt-BR, agrega por SITE + PRODUCT SERIES e grava a aba Step1_Comparativo_Serie.")
+st.title("Passo 1 — Comparativo Mensal")
+st.caption(
+    "Comparativo REQUEST − PLAN com filtros e resumos por "
+    "PRODUCT NEED e PRODUCT SERIES."
+)
 
-# ---------- Normalização dos headers ----------
+PT_BR_MESES = [
+    "jan", "fev", "mar", "abr", "mai", "jun",
+    "jul", "ago", "set", "out", "nov", "dez"
+]
+
+MES_RE = re.compile(
+    r'^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/\d{2}$',
+    re.IGNORECASE
+)
+
+# =====================================================
+# FUNÇÕES AUXILIARES
+# =====================================================
 def _normalize_header(col):
-    """
-    Transforma o header em alias 'mmm/aa' (pt-BR) SEM alterar o DataFrame original.
-    Aceita:
-      - pandas.Timestamp / datetime.date (ex.: 2026-01-01)
-      - strings com variações: 'Jan/26', 'JAN-26', ' jan 26 ', 'jan/2026'
-    """
-    # 1) Datas reais
     if isinstance(col, (pd.Timestamp, dt.date)):
-        m = col.month
-        y = col.year % 100
-        return f"{PT_BR_MESES[m-1]}/{y:02d}"
+        return f"{PT_BR_MESES[col.month-1]}/{col.year % 100:02d}"
 
-    # 2) Strings com ruídos
-    s = str(col).replace('\u00a0', ' ')  # NBSP -> espaço normal
-    s = s.strip().lower()
-    # trocar separadores por '/'
-    s = re.sub(r'[-_ ]+', '/', s)
+    s = str(col).replace("\u00a0", " ").strip().lower()
+    s = re.sub(r"[-_ ]+", "/", s)
 
-    # 'jan/2026' -> 'jan/26'
-    m = re.match(r'^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/(\d{2,4})$', s)
+    m = re.match(
+        r"^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/(\d{2,4})$",
+        s
+    )
     if m:
-        mm, yy = m.group(1), m.group(2)
-        if len(yy) == 4:
-            yy = yy[-2:]
-        return f"{mm}/{yy}"
+        yy = m.group(2)[-2:]
+        return f"{m.group(1)}/{yy}"
 
-    # 'jan26' -> 'jan/26'
-    m = re.match(r'^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)(\d{2})$', s)
+    m = re.match(
+        r"^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)(\d{2})$",
+        s
+    )
     if m:
         return f"{m.group(1)}/{m.group(2)}"
 
     return s
 
-def detectar_colunas_mes(df: pd.DataFrame):
-    """
-    Retorna:
-      - cols_meses: lista com os NOMES ORIGINAIS das colunas que são meses
-      - idx_sorted: mesma lista, porém ordenada cronologicamente via alias normalizado
-      - debug_map: dict {col_original -> alias_normalizado}
-    """
+
+def detectar_colunas_mes(df):
+    cols_mes = []
     debug_map = {}
-    cols_meses = []
+
     for c in df.columns:
         alias = _normalize_header(c)
         debug_map[str(c)] = alias
         if MES_RE.match(alias or ""):
-            cols_meses.append(c)
+            cols_mes.append(c)
 
-    # ordenar por ano e mês usando o alias
-    def _ord_key(c):
-        alias = debug_map[str(c)]
-        mm, yy = alias.split('/')
-        return (int(yy), PT_BR_MESES.index(mm))
-    idx_sorted = sorted(cols_meses, key=_ord_key)
-    return cols_meses, idx_sorted, debug_map
+    def ordem(c):
+        mm, yy = debug_map[str(c)].split("/")
+        return int(yy), PT_BR_MESES.index(mm)
 
-def garantir_numerico(df: pd.DataFrame, mes_cols):
-    for m in mes_cols:
-        # se coluna não existir no DF (caso raro), ignore
+    return sorted(cols_mes, key=ordem), debug_map
+
+
+def garantir_numerico(df, meses):
+    for m in meses:
         if m in df.columns:
-            df[m] = pd.to_numeric(df[m], errors='coerce').fillna(0).astype(int)
+            df[m] = pd.to_numeric(df[m], errors="coerce").fillna(0).astype(int)
     return df
 
-def gerar_passo1(xlsx_bytes, out_sheet="Step1_Comparativo_Serie", show_debug=False):
-    # Ler workbook em memória
+
+def colorir_valores(val):
+    if isinstance(val, (int, float)):
+        if val < 0:
+            return "color: red; font-weight: bold;"
+        if val > 0:
+            return "color: green; font-weight: bold;"
+    return ""
+
+# =====================================================
+# FUNÇÃO PRINCIPAL
+# =====================================================
+def gerar_passo1(xlsx_bytes, show_debug=False):
+
     with pd.ExcelFile(io.BytesIO(xlsx_bytes), engine="openpyxl") as xls:
         if "PLAN" not in xls.sheet_names or "REQUEST" not in xls.sheet_names:
-            raise ValueError("O arquivo precisa conter as abas 'PLAN' e 'REQUEST'.")
-        plan = pd.read_excel(xls, sheet_name="PLAN", engine="openpyxl")
-        req  = pd.read_excel(xls, sheet_name="REQUEST", engine="openpyxl")
+            raise ValueError("O arquivo precisa conter as abas PLAN e REQUEST.")
 
-    # Detectar meses de cada aba (usando nome ORIGINAL + alias p/ ordenação)
-    plan_cols, plan_sorted, plan_map = detectar_colunas_mes(plan)
-    req_cols,  req_sorted,  req_map  = detectar_colunas_mes(req)
+        plan = pd.read_excel(xls, "PLAN")
+        req = pd.read_excel(xls, "REQUEST")
+
+    # -------------------------------------------------
+    # DETECTAR MESES
+    # -------------------------------------------------
+    meses_plan, map_plan = detectar_colunas_mes(plan)
+    meses_req, map_req = detectar_colunas_mes(req)
+    meses = list(dict.fromkeys(meses_plan + meses_req))
+
+    if not meses:
+        raise ValueError("Nenhuma coluna de mês no padrão pt-BR foi encontrada.")
+
+    plan = garantir_numerico(plan, meses)
+    req = garantir_numerico(req, meses)
 
     if show_debug:
-        st.subheader("Diagnóstico de colunas (PLAN)")
-        st.json(plan_map)
-        st.subheader("Diagnóstico de colunas (REQUEST)")
-        st.json(req_map)
+        st.subheader("Diagnóstico de colunas - PLAN")
+        st.json(map_plan)
+        st.subheader("Diagnóstico de colunas - REQUEST")
+        st.json(map_req)
 
-    # União dos meses reconhecidos nas duas abas (preservando nomes originais)
-    mes_cols_union = list(dict.fromkeys(plan_sorted + req_sorted))
-    if not mes_cols_union:
-        raise ValueError("Não encontrei colunas de meses no padrão pt-BR (ex.: 'jan/26', 'fev/26'...).")
+    # -------------------------------------------------
+    # FILTROS
+    # -------------------------------------------------
+    st.subheader("Filtros")
 
-    # Coagir numérico nos meses detectados
-    plan = garantir_numerico(plan, mes_cols_union)
-    req  = garantir_numerico(req,  mes_cols_union)
+    def filtro(df, col):
+        if col not in df.columns:
+            return None
+        valores = sorted(df[col].dropna().unique())
+        return st.multiselect(col, valores, default=valores)
 
-    # Chaves de agrupamento
-    grp = [c for c in ["SITE", "PRODUCT SERIES"] if c in plan.columns and c in req.columns]
-    if len(grp) < 2:
-        raise ValueError("As colunas 'SITE' e 'PRODUCT SERIES' precisam existir em 'PLAN' e 'REQUEST'.")
+    c1, c2, c3, c4 = st.columns(4)
 
-    plan_agg = plan[grp + mes_cols_union].groupby(grp, dropna=False)[mes_cols_union].sum().reset_index()
-    req_agg  = req [grp + mes_cols_union].groupby(grp, dropna=False)[mes_cols_union].sum().reset_index()
+    with c1:
+        f_brand = filtro(plan, "PRODUCT BRAND")
+    with c2:
+        f_market = filtro(plan, "PRODUCT MARKET")
+    with c3:
+        f_site = filtro(plan, "SITE")
+    with c4:
+        f_need = filtro(plan, "PRODUCT NEED")
 
-    comp = pd.merge(req_agg, plan_agg, on=grp, how="outer", suffixes=("_REQ", "_PLAN"))
-    for m in mes_cols_union:
-        comp[m] = comp.get(f"{m}_REQ", 0).fillna(0).astype(int) - comp.get(f"{m}_PLAN", 0).fillna(0).astype(int)
+    def aplicar_filtros(df):
+        if f_brand is not None:
+            df = df[df["PRODUCT BRAND"].isin(f_brand)]
+        if f_market is not None:
+            df = df[df["PRODUCT MARKET"].isin(f_market)]
+        if f_site is not None:
+            df = df[df["SITE"].isin(f_site)]
+        if f_need is not None:
+            df = df[df["PRODUCT NEED"].isin(f_need)]
+        return df
 
-    step1 = comp[grp + mes_cols_union].copy()
-    step1["TOTAL"] = step1[mes_cols_union].sum(axis=1)
-    step1 = step1.sort_values(by=["SITE", "TOTAL"], ascending=[True, False])
+    plan = aplicar_filtros(plan)
+    req = aplicar_filtros(req)
 
-    # Linha TOTAL GERAL (soma por coluna)
-    linha_total = {k: "TOTAL GERAL" for k in grp}
-    for m in mes_cols_union:
-        linha_total[m] = int(step1[m].sum())
-    linha_total["TOTAL"] = int(step1["TOTAL"].sum())
-    step1 = pd.concat([step1, pd.DataFrame([linha_total])], ignore_index=True)
+    # =================================================
+    # TABELA 1 — PRODUCT NEED + PRODUCT SERIES
+    # =================================================
+    grp_serie = ["SITE", "PRODUCT NEED", "PRODUCT SERIES"]
 
-    # Escrever de volta todas as abas originais + Step1
-    buf_in = io.BytesIO(xlsx_bytes)
-    xls_in = pd.ExcelFile(buf_in, engine="openpyxl")
+    plan_s = plan[grp_serie + meses].groupby(grp_serie, dropna=False)[meses].sum().reset_index()
+    req_s  = req [grp_serie + meses].groupby(grp_serie, dropna=False)[meses].sum().reset_index()
+
+    comp_s = pd.merge(plan_s, req_s, on=grp_serie, how="outer", suffixes=("_PLAN", "_REQ"))
+
+    for m in meses:
+        comp_s[m] = comp_s.get(f"{m}_REQ", 0).fillna(0) - comp_s.get(f"{m}_PLAN", 0).fillna(0)
+
+    step1_serie = comp_s[grp_serie + meses].copy()
+    step1_serie["TOTAL"] = step1_serie[meses].sum(axis=1)
+
+    total_s = {c: "TOTAL GERAL" for c in grp_serie}
+    for m in meses:
+        total_s[m] = int(step1_serie[m].sum())
+    total_s["TOTAL"] = int(step1_serie["TOTAL"].sum())
+
+    step1_serie = pd.concat(
+        [step1_serie, pd.DataFrame([total_s])],
+        ignore_index=True
+    )
+
+    # =================================================
+    # TABELA 2 — APENAS PRODUCT NEED
+    # =================================================
+    grp_need = ["SITE", "PRODUCT NEED"]
+
+    plan_n = plan[grp_need + meses].groupby(grp_need, dropna=False)[meses].sum().reset_index()
+    req_n  = req [grp_need + meses].groupby(grp_need, dropna=False)[meses].sum().reset_index()
+
+    comp_n = pd.merge(plan_n, req_n, on=grp_need, how="outer", suffixes=("_PLAN", "_REQ"))
+
+    for m in meses:
+        comp_n[m] = comp_n.get(f"{m}_REQ", 0).fillna(0) - comp_n.get(f"{m}_PLAN", 0).fillna(0)
+
+    step1_need = comp_n[grp_need + meses].copy()
+    step1_need["TOTAL"] = step1_need[meses].sum(axis=1)
+
+    total_n = {c: "TOTAL GERAL" for c in grp_need}
+    for m in meses:
+        total_n[m] = int(step1_need[m].sum())
+    total_n["TOTAL"] = int(step1_need["TOTAL"].sum())
+
+    step1_need = pd.concat(
+        [step1_need, pd.DataFrame([total_n])],
+        ignore_index=True
+    )
+
+    # =================================================
+    # EXPORTAR EXCEL
+    # =================================================
     buf_out = io.BytesIO()
     with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
-        for sheet in xls_in.sheet_names:
-            df_sheet = pd.read_excel(xls_in, sheet_name=sheet, engine="openpyxl")
-            df_sheet.to_excel(writer, sheet_name=sheet, index=False)
-        step1.to_excel(writer, sheet_name=out_sheet, index=False)
-
-    return buf_out.getvalue(), step1
-
-# -------- UI --------
-uploaded = st.file_uploader("Envie o Excel (precisa conter abas PLAN e REQUEST)", type=["xlsx"])
-debug = st.checkbox("Exibir diagnóstico de colunas (headers reconhecidos)", value=False)
-
-if uploaded is not None:
-    try:
-        out_bytes, df_preview = gerar_passo1(uploaded.read(), show_debug=debug)
-        st.success("Aba 'Step1_Comparativo_Serie' gerada com sucesso.")
-        st.dataframe(df_preview, use_container_width=True)
-        st.download_button(
-            label="⬇️ Baixar Excel com a aba Step1_Comparativo_Serie",
-            data=out_bytes,
-            file_name="saida_step1.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        step1_serie.to_excel(
+            writer,
+            sheet_name="Step1_Comparativo_Serie",
+            index=False
         )
+        step1_need.to_excel(
+            writer,
+            sheet_name="Step1_Comparativo_Need",
+            index=False
+        )
+
+    return buf_out.getvalue(), step1_serie, step1_need
+
+
+# =====================================================
+# UI
+# =====================================================
+uploaded = st.file_uploader(
+    "Envie o Excel (precisa conter abas PLAN e REQUEST)",
+    type=["xlsx"]
+)
+
+debug = st.checkbox("Exibir diagnóstico de colunas", value=False)
+
+if uploaded:
+    try:
+        excel_out, df_serie, df_need = gerar_passo1(
+            uploaded.read(),
+            show_debug=debug
+        )
+
+        st.success("Processamento concluído ✅")
+
+        st.subheader("Comparativo por PRODUCT NEED + PRODUCT SERIES")
+        st.dataframe(
+            df_serie.style.applymap(colorir_valores),
+            use_container_width=True
+        )
+
+        st.subheader("Resumo por PRODUCT NEED")
+        st.dataframe(
+            df_need.style.applymap(colorir_valores),
+            use_container_width=True
+        )
+
+        st.download_button(
+            "⬇️ Baixar Excel",
+            data=excel_out,
+            file_name="saida_step1.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
     except Exception as e:
-        st.error(f"Erro ao processar: {e}")
+        st.error(f"Erro ao processar o arquivo: {e}")
 else:
-    st.info("Faça o upload do arquivo Excel para iniciar.")
+    st.info("Faça upload do Excel para iniciar.")
