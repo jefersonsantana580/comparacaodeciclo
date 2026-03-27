@@ -181,25 +181,57 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     # =================================================
     # TABELA 2 — PRODUCT NEED + PRODUCT SERIES
     # =================================================
-    grp_serie = ["SITE", "PRODUCT NEED", "PRODUCT SERIES"]
+    
 
-    plan_s = plan[grp_serie + meses].groupby(grp_serie, dropna=False)[meses].sum().reset_index()
-    req_s  = req [grp_serie + meses].groupby(grp_serie, dropna=False)[meses].sum().reset_index()
+grp_serie = [
+    "SITE",
+    "PRODUCT NEED",
+    "PRODUCT SERIES",
+    "PRODUCT BRAND",
+    "PRODUCT MARKET"
+]
 
-    comp_s = pd.merge(plan_s, req_s, on=grp_serie, how="outer", suffixes=("_PLAN", "_REQ"))
+plan_s = (
+    plan[grp_serie + meses]
+    .groupby(grp_serie, dropna=False)[meses]
+    .sum()
+    .reset_index()
+)
 
-    for m in meses:
-        comp_s[m] = comp_s.get(f"{m}_REQ", 0).fillna(0) - comp_s.get(f"{m}_PLAN", 0).fillna(0)
+req_s = (
+    req[grp_serie + meses]
+    .groupby(grp_serie, dropna=False)[meses]
+    .sum()
+    .reset_index()
+)
 
-    step1_serie = comp_s[grp_serie + meses].copy()
-    step1_serie["TOTAL"] = step1_serie[meses].sum(axis=1)
+comp_s = pd.merge(
+    plan_s,
+    req_s,
+    on=grp_serie,
+    how="outer",
+    suffixes=("_PLAN", "_REQ")
+)
 
-    total_s = {c: "TOTAL GERAL" for c in grp_serie}
-    for m in meses:
-        total_s[m] = int(step1_serie[m].sum())
-    total_s["TOTAL"] = int(step1_serie["TOTAL"].sum())
+for m in meses:
+    comp_s[m] = (
+        comp_s.get(f"{m}_REQ", 0).fillna(0)
+        - comp_s.get(f"{m}_PLAN", 0).fillna(0)
+    )
 
-    step1_serie = pd.concat([step1_serie, pd.DataFrame([total_s])], ignore_index=True)
+step1_serie = comp_s[grp_serie + meses].copy()
+step1_serie["TOTAL"] = step1_serie[meses].sum(axis=1)
+
+total_s = {c: "TOTAL GERAL" for c in grp_serie}
+for m in meses:
+    total_s[m] = int(step1_serie[m].sum())
+total_s["TOTAL"] = int(step1_serie["TOTAL"].sum())
+
+step1_serie = pd.concat(
+    [step1_serie, pd.DataFrame([total_s])],
+    ignore_index=True
+)
+
 
    
     # =================================================
