@@ -225,20 +225,65 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
 
     step1_serie = pd.concat([step1_serie, pd.DataFrame([total_s])], ignore_index=True)
 
+    
+
+ # =================================================
+    # EXPORTAR EXCEL (COM FORMATAÇÃO)
     # =================================================
-    # EXPORTAR EXCEL
-    # =================================================
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
     buf_out = io.BytesIO()
     with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
+        # Copia abas originais
         for sheet in xls_original.sheet_names:
-            pd.read_excel(xls_original, sheet).to_excel(writer, sheet_name=sheet, index=False)
+            pd.read_excel(xls_original, sheet).to_excel(
+                writer, sheet_name=sheet, index=False
+            )
 
-        step1_serie.to_excel(writer, "Step1_Comparativo_Serie", index=False)
-        step1_need.to_excel(writer, "Step1_Comparativo_Need", index=False)
-        req_need.to_excel(writer, "Resumo_Request_Product_Need", index=False)
+        # Abas novas
+        abas = {
+            "Step1_Comparativo_Serie": step1_serie,
+            "Step1_Comparativo_Need": step1_need,
+            "Resumo_Request_Product_Need": req_need
+        }
 
-    return buf_out.getvalue(), step1_serie, step1_need, req_need
+        for nome_aba, df in abas.items():
+            df.to_excel(writer, sheet_name=nome_aba, index=False)
+            ws = writer.book[nome_aba]
 
+            # Identifica colunas numéricas
+            cols_num = df.select_dtypes(include="number").columns
+            idx_cols_num = [
+                df.columns.get_loc(c) + 1 for c in cols_num
+            ]
+
+            for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+                for idx in idx_cols_num:
+                    cell = row[idx - 1]
+
+                    if isinstance(cell.value, (int, float)):
+                        # Formato numérico com ponto de milhar
+                        cell.number_format = '#,##0'
+
+                        # Cores
+                        if cell.value < 0:
+                            cell.font = Font(color="FF0000", bold=True)
+                        elif cell.value > 0:
+                            cell.font = Font(color="008000", bold=True)
+
+                # TOTAL GERAL em negrito
+                if str(row[0].value).upper() == "TOTAL GERAL":
+                    for cell in row:
+                        cell.font = Font(bold=True)
+
+            # Ajuste automático de largura
+            for col in ws.columns:
+                max_len = max(
+                    len(str(cell.value)) if cell.value is not None else 0
+                    for cell in col
+                )
+                ws.column_dimensions[get_column_letter(col[0].column)].width = max_len + 2``
 # =====================================================
 # UI
 # =====================================================
