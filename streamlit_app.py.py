@@ -236,7 +236,9 @@ step1_serie = pd.concat(
 buf_out = io.BytesIO()
 
 
-    with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
+   with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
+
+       
         # Copiar abas originais SEM ALTERAR
         for sheet in xls_original.sheet_names:
             df_original = pd.read_excel(xls_original, sheet_name=sheet, engine="openpyxl")
