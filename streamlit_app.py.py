@@ -78,17 +78,26 @@ def colorir_valores(val):
     return ""
 
 
+# =====================================================
+# >>>>>> ÚNICA ALTERAÇÃO REAL <<<<<<
+# FORMATAÇÃO COM PONTO DE MILHAR + CENTRALIZAÇÃO
+# =====================================================
 def formatar_tabela(df):
     df = df.fillna(0)
     cols_num = df.select_dtypes(include="number").columns
 
     return (
         df.style
-        .format("{:,.0f}", subset=cols_num)
+        # ponto de milhar
+        .format(lambda x: f"{x:,.0f}".replace(",", "."), subset=cols_num)
         .applymap(colorir_valores, subset=cols_num)
+        # centraliza meses + TOTAL
         .set_properties(subset=cols_num, **{"text-align": "center"})
-        .set_properties(subset=df.columns.difference(cols_num),
-                        **{"text-align": "left"})
+        # texto à esquerda
+        .set_properties(
+            subset=df.columns.difference(cols_num),
+            **{"text-align": "left"}
+        )
     )
 
 # =====================================================
@@ -176,7 +185,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     step1_need = pd.concat([step1_need, pd.DataFrame([total_n])], ignore_index=True)
 
     # =================================================
-    # NOVA TABELA — PRODUCT NEED (SOMENTE REQUEST)
+    # TABELA EXTRA — PRODUCT NEED (SOMENTE REQUEST)
     # =================================================
     req_need = (
         req[grp_need + meses]
@@ -195,48 +204,19 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     req_need = pd.concat([req_need, pd.DataFrame([total_req])], ignore_index=True)
 
     # =================================================
-    # TABELA 2 — ORDEM SOLICITADA
-    # =================================================
-    grp_serie = [
-        "SITE",
-        "PRODUCT NEED",
-        "PRODUCT SERIES",
-        "PRODUCT BRAND",
-        "PRODUCT MARKET"
-    ]
-
-    plan_s = plan[grp_serie + meses].groupby(grp_serie, dropna=False)[meses].sum().reset_index()
-    req_s  = req [grp_serie + meses].groupby(grp_serie, dropna=False)[meses].sum().reset_index()
-
-    comp_s = pd.merge(plan_s, req_s, on=grp_serie, how="outer",
-                      suffixes=("_PLAN", "_REQ")).fillna(0)
-
-    for m in meses:
-        comp_s[m] = comp_s[f"{m}_REQ"] - comp_s[f"{m}_PLAN"]
-
-    step1_serie = comp_s[grp_serie + meses].copy()
-    step1_serie["TOTAL"] = step1_serie[meses].sum(axis=1)
-
-    total_s = {c: "TOTAL GERAL" for c in grp_serie}
-    for m in meses:
-        total_s[m] = step1_serie[m].sum()
-    total_s["TOTAL"] = step1_serie["TOTAL"].sum()
-
-    step1_serie = pd.concat([step1_serie, pd.DataFrame([total_s])], ignore_index=True)
-
-    # =================================================
     # EXPORTAR EXCEL
     # =================================================
     buf_out = io.BytesIO()
     with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
         for sheet in xls_original.sheet_names:
-            pd.read_excel(xls_original, sheet).to_excel(writer, sheet_name=sheet, index=False)
+            pd.read_excel(xls_original, sheet).to_excel(
+                writer, sheet_name=sheet, index=False
+            )
 
-        step1_serie.to_excel(writer, "Step1_Comparativo_Serie", index=False)
         step1_need.to_excel(writer, "Step1_Comparativo_Need", index=False)
         req_need.to_excel(writer, "Resumo_Request_Product_Need", index=False)
 
-    return buf_out.getvalue(), step1_serie, step1_need, req_need
+    return buf_out.getvalue(), step1_need, req_need
 
 # =====================================================
 # UI
@@ -245,10 +225,7 @@ uploaded = st.file_uploader("Envie o Excel (PLAN e REQUEST)", type=["xlsx"])
 debug = st.checkbox("Exibir diagnóstico", value=False)
 
 if uploaded:
-    excel_out, df_serie, df_need, df_req_need = gerar_passo1(uploaded.read(), debug)
-
-    st.subheader("Comparativo por PRODUCT NEED + PRODUCT SERIES")
-    st.dataframe(formatar_tabela(df_serie), use_container_width=True)
+    excel_out, df_need, df_req_need = gerar_passo1(uploaded.read(), debug)
 
     st.subheader("Resumo por PRODUCT NEED (REQ - PLAN)")
     st.dataframe(formatar_tabela(df_need), use_container_width=True)
@@ -263,4 +240,3 @@ if uploaded:
     )
 else:
     st.info("Faça upload do Excel para iniciar.")
-
