@@ -15,9 +15,7 @@ st.set_page_config(
 )
 
 st.title("Comparativo Request Vs Plan")
-st.caption(
-    "Comparativo REQUEST − PLAN com filtros e resumos."
-)
+st.caption("Comparativo REQUEST − PLAN com filtros e resumos")
 
 PT_BR_MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"]
 
@@ -67,18 +65,27 @@ def detectar_colunas_mes(df):
 def garantir_numerico(df, meses):
     for m in meses:
         if m in df.columns:
-            df[m] = pd.to_numeric(df[m], errors="coerce").fillna(0).astype(int)
+            df[m] = pd.to_numeric(df[m], errors="coerce").fillna(0)
     return df
 
 
 def colorir_valores(val):
     if isinstance(val, (int, float)):
         if val < 0:
-            return "color: red; font-weight: bold;"
-        elif val > 0:
-            return "color: green; font-weight: bold;"
+            return "color:red;font-weight:bold;"
+        if val > 0:
+            return "color:green;font-weight:bold;"
     return ""
 
+
+def formatar_tabela(df):
+    cols_num = df.select_dtypes(include="number").columns
+    return (
+        df.style
+        .format("{:,.0f}", subset=cols_num)          # separador de milhar, sem decimal
+        .applymap(colorir_valores, subset=cols_num)
+        .set_properties(**{"text-align": "center"})  # centraliza tudo
+    )
 
 # =====================================================
 # FUNÇÃO PRINCIPAL
@@ -100,9 +107,9 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     req  = garantir_numerico(req, meses)
 
     if show_debug:
-        st.subheader("Diagnóstico de colunas - PLAN")
+        st.subheader("Diagnóstico PLAN")
         st.json(map_plan)
-        st.subheader("Diagnóstico de colunas - REQUEST")
+        st.subheader("Diagnóstico REQUEST")
         st.json(map_req)
 
     # =================================================
@@ -151,20 +158,20 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     comp_n = pd.merge(plan_n, req_n, on=grp_need, how="outer", suffixes=("_PLAN", "_REQ"))
 
     for m in meses:
-        comp_n[m] = comp_n.get(f"{m}_REQ", 0).fillna(0) - comp_n.get(f"{m}_PLAN", 0).fillna(0)
+        comp_n[m] = comp_n.get(f"{m}_REQ", 0) - comp_n.get(f"{m}_PLAN", 0)
 
     step1_need = comp_n[grp_need + meses].copy()
     step1_need["TOTAL"] = step1_need[meses].sum(axis=1)
 
     total_n = {c: "TOTAL GERAL" for c in grp_need}
     for m in meses:
-        total_n[m] = int(step1_need[m].sum())
-    total_n["TOTAL"] = int(step1_need["TOTAL"].sum())
+        total_n[m] = step1_need[m].sum()
+    total_n["TOTAL"] = step1_need["TOTAL"].sum()
 
     step1_need = pd.concat([step1_need, pd.DataFrame([total_n])], ignore_index=True)
 
     # =================================================
-    # ✅ TABELA 2 — ORDEM QUE VOCÊ PEDIU
+    # TABELA 2 — ORDEM SOLICITADA
     # =================================================
     grp_serie = [
         "SITE",
@@ -180,15 +187,15 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     comp_s = pd.merge(plan_s, req_s, on=grp_serie, how="outer", suffixes=("_PLAN", "_REQ"))
 
     for m in meses:
-        comp_s[m] = comp_s.get(f"{m}_REQ", 0).fillna(0) - comp_s.get(f"{m}_PLAN", 0).fillna(0)
+        comp_s[m] = comp_s.get(f"{m}_REQ", 0) - comp_s.get(f"{m}_PLAN", 0)
 
     step1_serie = comp_s[grp_serie + meses].copy()
     step1_serie["TOTAL"] = step1_serie[meses].sum(axis=1)
 
     total_s = {c: "TOTAL GERAL" for c in grp_serie}
     for m in meses:
-        total_s[m] = int(step1_serie[m].sum())
-    total_s["TOTAL"] = int(step1_serie["TOTAL"].sum())
+        total_s[m] = step1_serie[m].sum()
+    total_s["TOTAL"] = step1_serie["TOTAL"].sum()
 
     step1_serie = pd.concat([step1_serie, pd.DataFrame([total_s])], ignore_index=True)
 
@@ -196,49 +203,35 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     # EXPORTAR EXCEL
     # =================================================
     buf_out = io.BytesIO()
-
     with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
         for sheet in xls_original.sheet_names:
-            df_original = pd.read_excel(xls_original, sheet_name=sheet, engine="openpyxl")
-            df_original.to_excel(writer, sheet_name=sheet, index=False)
+            pd.read_excel(xls_original, sheet).to_excel(writer, sheet_name=sheet, index=False)
 
         step1_serie.to_excel(writer, "Step1_Comparativo_Serie", index=False)
         step1_need.to_excel(writer, "Step1_Comparativo_Need", index=False)
 
     return buf_out.getvalue(), step1_serie, step1_need
 
-
 # =====================================================
 # UI
 # =====================================================
-uploaded = st.file_uploader(
-    "Envie o Excel (abas PLAN e REQUEST)",
-    type=["xlsx"]
-)
-
-debug = st.checkbox("Exibir diagnóstico de colunas", value=False)
+uploaded = st.file_uploader("Envie o Excel (PLAN e REQUEST)", type=["xlsx"])
+debug = st.checkbox("Exibir diagnóstico", value=False)
 
 if uploaded:
-    try:
-        excel_out, df_serie, df_need = gerar_passo1(uploaded.read(), show_debug=debug)
+    excel_out, df_serie, df_need = gerar_passo1(uploaded.read(), debug)
 
-        st.success("Processamento concluído ✅")
+    st.subheader("Comparativo por PRODUCT NEED + PRODUCT SERIES")
+    st.dataframe(formatar_tabela(df_serie), use_container_width=True)
 
-        st.subheader("Comparativo por PRODUCT NEED + PRODUCT SERIES")
-        st.dataframe(df_serie.style.applymap(colorir_valores), use_container_width=True)
+    st.subheader("Resumo por PRODUCT NEED")
+    st.dataframe(formatar_tabela(df_need), use_container_width=True)
 
-        st.subheader("Resumo por PRODUCT NEED")
-        st.dataframe(df_need.style.applymap(colorir_valores), use_container_width=True)
-
-        st.download_button(
-            "⬇️ Baixar Excel",
-            data=excel_out,
-            file_name="saida_step1.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-    except Exception as e:
-        st.error(f"Erro ao processar o arquivo: {e}")
-
+    st.download_button(
+        "⬇️ Baixar Excel",
+        data=excel_out,
+        file_name="saida_step1.xlsx"
+    )
 else:
     st.info("Faça upload do Excel para iniciar.")
+
