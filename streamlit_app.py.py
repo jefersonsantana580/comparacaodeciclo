@@ -178,11 +178,9 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
 
     step1_need = pd.concat([step1_need, pd.DataFrame([total_n])], ignore_index=True)
     
-    # =================================================
-    # TABELA 2 — PRODUCT NEED + PRODUCT SERIES
-    # =================================================
-    
-
+# =================================================
+# TABELA 2 — PRODUCT NEED + PRODUCT SERIES
+# =================================================
 grp_serie = [
     "SITE",
     "PRODUCT NEED",
@@ -232,12 +230,11 @@ step1_serie = pd.concat(
     ignore_index=True
 )
 
+# =================================================
+# EXPORTAR EXCEL — MANTENDO ABAS ORIGINAIS
+# =================================================
+buf_out = io.BytesIO()
 
-   
-    # =================================================
-    # EXPORTAR EXCEL — MANTENDO ABAS ORIGINAIS
-    # =================================================
-    buf_out = io.BytesIO()
 
     with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
         # Copiar abas originais SEM ALTERAR
