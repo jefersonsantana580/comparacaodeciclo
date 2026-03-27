@@ -11,7 +11,7 @@ import streamlit as st
 # =====================================================
 st.set_page_config(page_title="Comparativo Request Vs Plan", layout="wide")
 st.title("Comparativo Request Vs Plan")
-st.caption("Comparativo REQUEST − PLAN e resultado final do REQUEST")
+st.caption("Comparativo REQUEST − PLAN e REQUEST Final")
 
 PT_BR_MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"]
 
@@ -92,20 +92,34 @@ def gerar_passo1(xlsx_bytes):
     req  = garantir_numerico(req, meses)
 
     # =================================================
-    # TABELA 1 — COMPARATIVO PRODUCT NEED
+    # TABELA 1 — COMPARATIVO POR PRODUCT NEED
     # =================================================
     grp_need = ["SITE", "PRODUCT NEED"]
 
-    plan_n = plan[grp_need + meses].groupby(grp_need)[meses].sum().reset_index()
-    req_n  = req [grp_need + meses].groupby(grp_need)[meses].sum().reset_index()
+    plan_n = (
+        plan[grp_need + meses]
+        .groupby(grp_need, dropna=False)[meses]
+        .sum()
+        .reset_index()
+    )
 
-    comp_n = pd.merge(plan_n, req_n, on=grp_need, how="outer",
-                      suffixes=("_PLAN", "_REQ")).fillna(0)
+    req_n = (
+        req[grp_need + meses]
+        .groupby(grp_need, dropna=False)[meses]
+        .sum()
+        .reset_index()
+    )
+
+    comp_n = (
+        pd.merge(plan_n, req_n, on=grp_need, how="outer",
+                 suffixes=("_PLAN", "_REQ"))
+        .fillna(0)
+    )
 
     for m in meses:
         comp_n[m] = comp_n[f"{m}_REQ"] - comp_n[f"{m}_PLAN"]
 
-    step1_need = comp_n[grp_need + meses]
+    step1_need = comp_n[grp_need + meses].copy()
     step1_need["TOTAL"] = step1_need[meses].sum(axis=1)
 
     total_n = {c: "TOTAL GERAL" for c in grp_need}
@@ -113,23 +127,46 @@ def gerar_passo1(xlsx_bytes):
         total_n[m] = step1_need[m].sum()
     total_n["TOTAL"] = step1_need["TOTAL"].sum()
 
-    step1_need = pd.concat([step1_need, pd.DataFrame([total_n])])
+    step1_need = pd.concat(
+        [step1_need, pd.DataFrame([total_n])],
+        ignore_index=True
+    )
 
     # =================================================
-    # ✅ TABELA 2 — COMPARATIVO SERIES
+    # TABELA 2 — COMPARATIVO POR SERIES
     # =================================================
-    grp_serie = ["SITE","PRODUCT NEED","PRODUCT SERIES","PRODUCT BRAND","PRODUCT MARKET"]
+    grp_serie = [
+        "SITE",
+        "PRODUCT NEED",
+        "PRODUCT SERIES",
+        "PRODUCT BRAND",
+        "PRODUCT MARKET"
+    ]
 
-    plan_s = plan[grp_serie + meses].groupby(grp_serie)[meses].sum().reset_index()
-    req_s  = req [grp_serie + meses].groupby(grp_serie)[meses].sum().reset_index()
+    plan_s = (
+        plan[grp_serie + meses]
+        .groupby(grp_serie, dropna=False)[meses]
+        .sum()
+        .reset_index()
+    )
 
-    comp_s = pd.merge(plan_s, req_s, on=grp_serie,
-                      how="outer", suffixes=("_PLAN","_REQ")).fillna(0)
+    req_s = (
+        req[grp_serie + meses]
+        .groupby(grp_serie, dropna=False)[meses]
+        .sum()
+        .reset_index()
+    )
+
+    comp_s = (
+        pd.merge(plan_s, req_s, on=grp_serie,
+                 how="outer", suffixes=("_PLAN", "_REQ"))
+        .fillna(0)
+    )
 
     for m in meses:
         comp_s[m] = comp_s[f"{m}_REQ"] - comp_s[f"{m}_PLAN"]
 
-    step1_serie = comp_s[grp_serie + meses]
+    step1_serie = comp_s[grp_serie + meses].copy()
     step1_serie["TOTAL"] = step1_serie[meses].sum(axis=1)
 
     total_s = {c: "TOTAL GERAL" for c in grp_serie}
@@ -137,7 +174,10 @@ def gerar_passo1(xlsx_bytes):
         total_s[m] = step1_serie[m].sum()
     total_s["TOTAL"] = step1_serie["TOTAL"].sum()
 
-    step1_serie = pd.concat([step1_serie, pd.DataFrame([total_s])])
+    step1_serie = pd.concat(
+        [step1_serie, pd.DataFrame([total_s])],
+        ignore_index=True
+    )
 
     # =================================================
     # ✅ TABELA 3 — REQUEST FINAL (SEM COMPARAÇÃO)
@@ -146,7 +186,7 @@ def gerar_passo1(xlsx_bytes):
 
     req_only = (
         req[grp_req + meses]
-        .groupby(grp_req)[meses]
+        .groupby(grp_req, dropna=False)[meses]
         .sum()
         .reset_index()
         .fillna(0)
@@ -159,7 +199,10 @@ def gerar_passo1(xlsx_bytes):
         total_req[m] = req_only[m].sum()
     total_req["TOTAL"] = req_only["TOTAL"].sum()
 
-    req_only = pd.concat([req_only, pd.DataFrame([total_req])])
+    req_only = pd.concat(
+        [req_only, pd.DataFrame([total_req])],
+        ignore_index=True
+    )
 
     # =================================================
     # EXPORTAÇÃO
@@ -177,7 +220,10 @@ def gerar_passo1(xlsx_bytes):
 # =====================================================
 # UI
 # =====================================================
-uploaded = st.file_uploader("Envie o Excel (PLAN e REQUEST)", type=["xlsx"])
+uploaded = st.file_uploader(
+    "Envie o Excel (abas PLAN e REQUEST)",
+    type=["xlsx"]
+)
 
 if uploaded:
     excel_out, df_need, df_serie, df_req = gerar_passo1(uploaded.read())
