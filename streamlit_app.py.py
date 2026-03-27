@@ -1,59 +1,19 @@
 
 # -*- coding: utf-8 -*-
 import io
-import re
-import datetime as dt
 import pandas as pd
 import streamlit as st
 
 # =====================================================
-# CONFIGURAÇÃO DA PÁGINA
+# CONFIGURAÇÃO DA PÁGINA (sempre executa)
 # =====================================================
 st.set_page_config(page_title="Comparativo Request Vs Plan", layout="wide")
 st.title("Comparativo Request Vs Plan")
-st.caption("Comparativo REQUEST − PLAN e REQUEST Final")
-
-PT_BR_MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"]
-
-MES_RE = re.compile(
-    r'^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/\d{2}$',
-    re.IGNORECASE
-)
+st.caption("Comparativo REQUEST − PLAN + REQUEST Final")
 
 # =====================================================
-# FUNÇÕES UTILITÁRIAS
+# FUNÇÕES DE VISUAL
 # =====================================================
-def _normalize_header(col):
-    if isinstance(col, (pd.Timestamp, dt.date)):
-        return f"{PT_BR_MESES[col.month-1]}/{col.year % 100:02d}"
-    s = str(col).strip().lower()
-    s = re.sub(r"[-_ ]+", "/", s)
-    return s
-
-
-def detectar_colunas_mes(df):
-    cols_mes = []
-    debug_map = {}
-    for c in df.columns:
-        alias = _normalize_header(c)
-        debug_map[str(c)] = alias
-        if MES_RE.match(alias or ""):
-            cols_mes.append(c)
-
-    def ordem(c):
-        mm, yy = debug_map[str(c)].split("/")
-        return int(yy), PT_BR_MESES.index(mm)
-
-    return sorted(cols_mes, key=ordem), debug_map
-
-
-def garantir_numerico(df, meses):
-    for m in meses:
-        if m in df.columns:
-            df[m] = pd.to_numeric(df[m], errors="coerce")
-    return df
-
-
 def colorir_valores(val):
     if isinstance(val, (int, float)):
         if val < 0:
@@ -66,6 +26,7 @@ def colorir_valores(val):
 def formatar_tabela(df):
     df = df.fillna(0)
     cols_num = df.select_dtypes(include="number").columns
+
     return (
         df.style
         .format("{:,.0f}", subset=cols_num)
@@ -76,171 +37,113 @@ def formatar_tabela(df):
     )
 
 # =====================================================
-# FUNÇÃO PRINCIPAL
-# =====================================================
-def gerar_passo1(xlsx_bytes):
-
-    xls = pd.ExcelFile(io.BytesIO(xlsx_bytes), engine="openpyxl")
-    plan = pd.read_excel(xls, "PLAN")
-    req  = pd.read_excel(xls, "REQUEST")
-
-    meses_p, _ = detectar_colunas_mes(plan)
-    meses_r, _ = detectar_colunas_mes(req)
-    meses = list(dict.fromkeys(meses_p + meses_r))
-
-    plan = garantir_numerico(plan, meses)
-    req  = garantir_numerico(req, meses)
-
-    # =================================================
-    # TABELA 1 — COMPARATIVO POR PRODUCT NEED
-    # =================================================
-    grp_need = ["SITE", "PRODUCT NEED"]
-
-    plan_n = (
-        plan[grp_need + meses]
-        .groupby(grp_need, dropna=False)[meses]
-        .sum()
-        .reset_index()
-    )
-
-    req_n = (
-        req[grp_need + meses]
-        .groupby(grp_need, dropna=False)[meses]
-        .sum()
-        .reset_index()
-    )
-
-    comp_n = (
-        pd.merge(plan_n, req_n, on=grp_need, how="outer",
-                 suffixes=("_PLAN", "_REQ"))
-        .fillna(0)
-    )
-
-    for m in meses:
-        comp_n[m] = comp_n[f"{m}_REQ"] - comp_n[f"{m}_PLAN"]
-
-    step1_need = comp_n[grp_need + meses].copy()
-    step1_need["TOTAL"] = step1_need[meses].sum(axis=1)
-
-    total_n = {c: "TOTAL GERAL" for c in grp_need}
-    for m in meses:
-        total_n[m] = step1_need[m].sum()
-    total_n["TOTAL"] = step1_need["TOTAL"].sum()
-
-    step1_need = pd.concat(
-        [step1_need, pd.DataFrame([total_n])],
-        ignore_index=True
-    )
-
-    # =================================================
-    # TABELA 2 — COMPARATIVO POR SERIES
-    # =================================================
-    grp_serie = [
-        "SITE",
-        "PRODUCT NEED",
-        "PRODUCT SERIES",
-        "PRODUCT BRAND",
-        "PRODUCT MARKET"
-    ]
-
-    plan_s = (
-        plan[grp_serie + meses]
-        .groupby(grp_serie, dropna=False)[meses]
-        .sum()
-        .reset_index()
-    )
-
-    req_s = (
-        req[grp_serie + meses]
-        .groupby(grp_serie, dropna=False)[meses]
-        .sum()
-        .reset_index()
-    )
-
-    comp_s = (
-        pd.merge(plan_s, req_s, on=grp_serie,
-                 how="outer", suffixes=("_PLAN", "_REQ"))
-        .fillna(0)
-    )
-
-    for m in meses:
-        comp_s[m] = comp_s[f"{m}_REQ"] - comp_s[f"{m}_PLAN"]
-
-    step1_serie = comp_s[grp_serie + meses].copy()
-    step1_serie["TOTAL"] = step1_serie[meses].sum(axis=1)
-
-    total_s = {c: "TOTAL GERAL" for c in grp_serie}
-    for m in meses:
-        total_s[m] = step1_serie[m].sum()
-    total_s["TOTAL"] = step1_serie["TOTAL"].sum()
-
-    step1_serie = pd.concat(
-        [step1_serie, pd.DataFrame([total_s])],
-        ignore_index=True
-    )
-
-    # =================================================
-    # ✅ TABELA 3 — REQUEST FINAL (SEM COMPARAÇÃO)
-    # =================================================
-    grp_req = ["SITE", "PRODUCT NEED"]
-
-    req_only = (
-        req[grp_req + meses]
-        .groupby(grp_req, dropna=False)[meses]
-        .sum()
-        .reset_index()
-        .fillna(0)
-    )
-
-    req_only["TOTAL"] = req_only[meses].sum(axis=1)
-
-    total_req = {c: "TOTAL GERAL" for c in grp_req}
-    for m in meses:
-        total_req[m] = req_only[m].sum()
-    total_req["TOTAL"] = req_only["TOTAL"].sum()
-
-    req_only = pd.concat(
-        [req_only, pd.DataFrame([total_req])],
-        ignore_index=True
-    )
-
-    # =================================================
-    # EXPORTAÇÃO
-    # =================================================
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        plan.to_excel(writer, "PLAN", index=False)
-        req.to_excel(writer, "REQUEST", index=False)
-        step1_need.to_excel(writer, "Comparativo_Need", index=False)
-        step1_serie.to_excel(writer, "Comparativo_Serie", index=False)
-        req_only.to_excel(writer, "Resumo_REQUEST_Final", index=False)
-
-    return buf.getvalue(), step1_need, step1_serie, req_only
-
-# =====================================================
-# UI
+# UPLOAD
 # =====================================================
 uploaded = st.file_uploader(
     "Envie o Excel (abas PLAN e REQUEST)",
     type=["xlsx"]
 )
 
-if uploaded:
-    excel_out, df_need, df_serie, df_req = gerar_passo1(uploaded.read())
+# =====================================================
+# PROCESSAMENTO (PROTEGIDO)
+# =====================================================
+if uploaded is not None:
+    try:
+        # -----------------------------
+        # Leitura segura
+        # -----------------------------
+        xls = pd.ExcelFile(uploaded)
+        plan = pd.read_excel(xls, "PLAN")
+        req  = pd.read_excel(xls, "REQUEST")
 
-    st.subheader("Resumo por PRODUCT NEED — Comparativo")
-    st.dataframe(formatar_tabela(df_need), use_container_width=True)
+        # Detectar meses automaticamente (colunas numéricas sequenciais)
+        meses = [c for c in plan.columns if "/" in str(c)]
 
-    st.subheader("Comparativo por PRODUCT NEED + PRODUCT SERIES")
-    st.dataframe(formatar_tabela(df_serie), use_container_width=True)
+        # Garantir numérico
+        for m in meses:
+            plan[m] = pd.to_numeric(plan[m], errors="coerce").fillna(0)
+            req[m]  = pd.to_numeric(req[m], errors="coerce").fillna(0)
 
-    st.subheader("Resumo por PRODUCT NEED — REQUEST Final")
-    st.dataframe(formatar_tabela(df_req), use_container_width=True)
+        # =================================================
+        # TABELA 1 — COMPARATIVO PRODUCT NEED
+        # =================================================
+        grp_need = ["SITE", "PRODUCT NEED"]
 
-    st.download_button(
-        "⬇️ Baixar Excel",
-        data=excel_out,
-        file_name="saida_step1.xlsx"
-    )
+        plan_n = plan.groupby(grp_need, dropna=False)[meses].sum().reset_index()
+        req_n  = req.groupby(grp_need, dropna=False)[meses].sum().reset_index()
+
+        comp_need = (
+            plan_n.merge(req_n, on=grp_need, how="outer",
+                         suffixes=("_PLAN", "_REQ"))
+            .fillna(0)
+        )
+
+        for m in meses:
+            comp_need[m] = comp_need[f"{m}_REQ"] - comp_need[f"{m}_PLAN"]
+
+        comp_need = comp_need[grp_need + meses]
+        comp_need["TOTAL"] = comp_need[meses].sum(axis=1)
+
+        # TOTAL GERAL
+        total_row = {c: "TOTAL GERAL" for c in grp_need}
+        for m in meses:
+            total_row[m] = comp_need[m].sum()
+        total_row["TOTAL"] = comp_need["TOTAL"].sum()
+
+        comp_need = pd.concat(
+            [comp_need, pd.DataFrame([total_row])],
+            ignore_index=True
+        )
+
+        # =================================================
+        # TABELA 2 — REQUEST FINAL (SEM COMPARAÇÃO)
+        # =================================================
+        req_only = (
+            req.groupby(grp_need, dropna=False)[meses]
+            .sum()
+            .reset_index()
+        )
+
+        req_only["TOTAL"] = req_only[meses].sum(axis=1)
+
+        total_req = {c: "TOTAL GERAL" for c in grp_need}
+        for m in meses:
+            total_req[m] = req_only[m].sum()
+        total_req["TOTAL"] = req_only["TOTAL"].sum()
+
+        req_only = pd.concat(
+            [req_only, pd.DataFrame([total_req])],
+            ignore_index=True
+        )
+
+        # =================================================
+        # UI
+        # =================================================
+        st.subheader("Resumo por PRODUCT NEED — Comparativo (REQ − PLAN)")
+        st.dataframe(formatar_tabela(comp_need), use_container_width=True)
+
+        st.subheader("Resumo por PRODUCT NEED — REQUEST Final")
+        st.dataframe(formatar_tabela(req_only), use_container_width=True)
+
+        # =================================================
+        # EXPORTAÇÃO
+        # =================================================
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            plan.to_excel(writer, "PLAN", index=False)
+            req.to_excel(writer, "REQUEST", index=False)
+            comp_need.to_excel(writer, "Comparativo_Need", index=False)
+            req_only.to_excel(writer, "Resumo_REQUEST_Final", index=False)
+
+        st.download_button(
+            "⬇️ Baixar Excel",
+            data=buf.getvalue(),
+            file_name="saida_step1.xlsx"
+        )
+
+    except Exception as e:
+        st.error("❌ Erro ao processar o arquivo")
+        st.exception(e)
+
 else:
     st.info("Faça upload do Excel para iniciar.")
