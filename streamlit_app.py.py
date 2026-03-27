@@ -236,7 +236,8 @@ step1_serie = pd.concat(
 buf_out = io.BytesIO()
 
 
-   with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
+with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
+
 
        
         # Copiar abas originais SEM ALTERAR
