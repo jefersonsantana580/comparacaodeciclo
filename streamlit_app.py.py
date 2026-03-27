@@ -84,7 +84,8 @@ def formatar_tabela(df):
 
     return (
         df.style
-        .format("{:,.0f}", subset=cols_num)
+        # >>> ÚNICA ALTERAÇÃO: ponto como separador de milhar <<<
+        .format(lambda x: f"{x:,.0f}".replace(",", "."), subset=cols_num)
         .applymap(colorir_valores, subset=cols_num)
         .set_properties(subset=cols_num, **{"text-align": "center"})
         .set_properties(subset=df.columns.difference(cols_num),
