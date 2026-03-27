@@ -65,7 +65,7 @@ def detectar_colunas_mes(df):
 def garantir_numerico(df, meses):
     for m in meses:
         if m in df.columns:
-            df[m] = pd.to_numeric(df[m], errors="coerce").fillna(0)
+            df[m] = pd.to_numeric(df[m], errors="coerce")
     return df
 
 
@@ -79,12 +79,18 @@ def colorir_valores(val):
 
 
 def formatar_tabela(df):
+    # PREENCHE None / NaN COM ZERO (somente visual)
+    df = df.fillna(0)
+
     cols_num = df.select_dtypes(include="number").columns
+
     return (
         df.style
-        .format("{:,.0f}", subset=cols_num)          # separador de milhar, sem decimal
+        .format("{:,.0f}", subset=cols_num)          # milhar + sem decimal
         .applymap(colorir_valores, subset=cols_num)
-        .set_properties(**{"text-align": "center"})  # centraliza tudo
+        .set_properties(subset=cols_num, **{"text-align": "center"})  # meses centralizados
+        .set_properties(subset=df.columns.difference(cols_num),
+                        **{"text-align": "left"})
     )
 
 # =====================================================
@@ -155,10 +161,11 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     plan_n = plan[grp_need + meses].groupby(grp_need, dropna=False)[meses].sum().reset_index()
     req_n  = req [grp_need + meses].groupby(grp_need, dropna=False)[meses].sum().reset_index()
 
-    comp_n = pd.merge(plan_n, req_n, on=grp_need, how="outer", suffixes=("_PLAN", "_REQ"))
+    comp_n = pd.merge(plan_n, req_n, on=grp_need, how="outer",
+                      suffixes=("_PLAN", "_REQ")).fillna(0)
 
     for m in meses:
-        comp_n[m] = comp_n.get(f"{m}_REQ", 0) - comp_n.get(f"{m}_PLAN", 0)
+        comp_n[m] = comp_n[f"{m}_REQ"] - comp_n[f"{m}_PLAN"]
 
     step1_need = comp_n[grp_need + meses].copy()
     step1_need["TOTAL"] = step1_need[meses].sum(axis=1)
@@ -184,10 +191,11 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     plan_s = plan[grp_serie + meses].groupby(grp_serie, dropna=False)[meses].sum().reset_index()
     req_s  = req [grp_serie + meses].groupby(grp_serie, dropna=False)[meses].sum().reset_index()
 
-    comp_s = pd.merge(plan_s, req_s, on=grp_serie, how="outer", suffixes=("_PLAN", "_REQ"))
+    comp_s = pd.merge(plan_s, req_s, on=grp_serie, how="outer",
+                      suffixes=("_PLAN", "_REQ")).fillna(0)
 
     for m in meses:
-        comp_s[m] = comp_s.get(f"{m}_REQ", 0) - comp_s.get(f"{m}_PLAN", 0)
+        comp_s[m] = comp_s[f"{m}_REQ"] - comp_s[f"{m}_PLAN"]
 
     step1_serie = comp_s[grp_serie + meses].copy()
     step1_serie["TOTAL"] = step1_serie[meses].sum(axis=1)
@@ -234,4 +242,3 @@ if uploaded:
     )
 else:
     st.info("Faça upload do Excel para iniciar.")
-
