@@ -1,4 +1,8 @@
 
+import streamlit as st
+
+st.write("✅ app iniciou")
+
 # -*- coding: utf-8 -*-
 import io
 import pandas as pd
