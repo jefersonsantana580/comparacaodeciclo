@@ -283,7 +283,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
                     len(str(cell.value)) if cell.value is not None else 0
                     for cell in col
                 )
-                ws.column_dimensions[get_column_letter(col[0].column)].width = max_len + 2``
+                ws.column_dimensions[get_column_letter(col[0].column)].width = max_len + 2
 # =====================================================
 # UI
 # =====================================================
