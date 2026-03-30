@@ -1,5 +1,5 @@
 
-# -*- coding: utf-8 -*-
+content = r'''# -*- coding: utf-8 -*-
 import io
 import re
 import datetime as dt
@@ -75,17 +75,13 @@ def formatar_tabela(df):
         .format(lambda x: f"{x:,.0f}".replace(",", "."), subset=cols_num)
         .applymap(colorir_valores, subset=cols_num)
         .set_properties(subset=cols_num, **{"text-align": "center"})
-        .set_properties(
-            subset=df.columns.difference(cols_num),
-            **{"text-align": "left"}
-        )
+        .set_properties(subset=df.columns.difference(cols_num), **{"text-align": "left"})
     )
 
 # =====================================================
 # FUNÇÃO PRINCIPAL
 # =====================================================
 def gerar_passo1(xlsx_bytes, show_debug=False):
-
     xls_original = pd.ExcelFile(io.BytesIO(xlsx_bytes), engine="openpyxl")
 
     plan = pd.read_excel(xls_original, "PLAN", engine="openpyxl")
@@ -119,7 +115,6 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         return st.multiselect(col, vals, default=vals)
 
     c1, c2, c3, c4 = st.columns(4)
-
     with c1:
         f_brand = filtro_mult(plan, "PRODUCT BRAND")
     with c2:
@@ -148,28 +143,10 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     # =================================================
     grp_need = ["SITE", "PRODUCT NEED"]
 
-    plan_n = (
-        plan[grp_need + meses]
-        .groupby(grp_need, dropna=False)[meses]
-        .sum()
-        .reset_index()
-    )
+    plan_n = plan[grp_need + meses].groupby(grp_need, dropna=False)[meses].sum().reset_index()
+    req_n  = req [grp_need + meses].groupby(grp_need, dropna=False)[meses].sum().reset_index()
 
-    req_n = (
-        req[grp_need + meses]
-        .groupby(grp_need, dropna=False)[meses]
-        .sum()
-        .reset_index()
-    )
-
-    comp_n = pd.merge(
-        plan_n,
-        req_n,
-        on=grp_need,
-        how="outer",
-        suffixes=("_PLAN", "_REQ")
-    ).fillna(0)
-
+    comp_n = pd.merge(plan_n, req_n, on=grp_need, how="outer", suffixes=("_PLAN", "_REQ")).fillna(0)
     for m in meses:
         comp_n[m] = comp_n[f"{m}_REQ"] - comp_n[f"{m}_PLAN"]
 
@@ -180,14 +157,27 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     for m in meses:
         total_n[m] = step1_need[m].sum()
     total_n["TOTAL"] = step1_need["TOTAL"].sum()
-
-    step1_need = pd.concat(
-        [step1_need, pd.DataFrame([total_n])],
-        ignore_index=True
-    )
+    step1_need = pd.concat([step1_need, pd.DataFrame([total_n])], ignore_index=True)
 
     # =================================================
-    # TABELA 2 — PRODUCT NEED + PRODUCT SERIES
+    # NOVA TABELA — PRODUCT NEED (SOMENTE REQUEST)
+    # =================================================
+    req_need = (
+        req[grp_need + meses]
+        .groupby(grp_need, dropna=False)[meses]
+        .sum()
+        .reset_index()
+    )
+    req_need["TOTAL"] = req_need[meses].sum(axis=1)
+
+    total_req = {c: "TOTAL GERAL" for c in grp_need}
+    for m in meses:
+        total_req[m] = req_need[m].sum()
+    total_req["TOTAL"] = req_need["TOTAL"].sum()
+    req_need = pd.concat([req_need, pd.DataFrame([total_req])], ignore_index=True)
+
+    # =================================================
+    # TABELA 2 — ORDEM SOLICITADA (SERIES)
     # =================================================
     grp_serie = [
         "SITE",
@@ -197,28 +187,10 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         "PRODUCT MARKET"
     ]
 
-    plan_s = (
-        plan[grp_serie + meses]
-        .groupby(grp_serie, dropna=False)[meses]
-        .sum()
-        .reset_index()
-    )
+    plan_s = plan[grp_serie + meses].groupby(grp_serie, dropna=False)[meses].sum().reset_index()
+    req_s  = req [grp_serie + meses].groupby(grp_serie, dropna=False)[meses].sum().reset_index()
 
-    req_s = (
-        req[grp_serie + meses]
-        .groupby(grp_serie, dropna=False)[meses]
-        .sum()
-        .reset_index()
-    )
-
-    comp_s = pd.merge(
-        plan_s,
-        req_s,
-        on=grp_serie,
-        how="outer",
-        suffixes=("_PLAN", "_REQ")
-    ).fillna(0)
-
+    comp_s = pd.merge(plan_s, req_s, on=grp_serie, how="outer", suffixes=("_PLAN", "_REQ")).fillna(0)
     for m in meses:
         comp_s[m] = comp_s[f"{m}_REQ"] - comp_s[f"{m}_PLAN"]
 
@@ -229,14 +201,10 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     for m in meses:
         total_s[m] = step1_serie[m].sum()
     total_s["TOTAL"] = step1_serie["TOTAL"].sum()
-
-    step1_serie = pd.concat(
-        [step1_serie, pd.DataFrame([total_s])],
-        ignore_index=True
-    )
+    step1_serie = pd.concat([step1_serie, pd.DataFrame([total_s])], ignore_index=True)
 
     # =================================================
-    # >>> ADD PRODUCT FC <<<
+    # >>> ADD — PRODUCT · FC · DELTA MENSAL (REQ - PLAN)
     # =================================================
     plan_fc = plan[plan["DEMAND TYPE"] == "FC"]
     req_fc  = req [req ["DEMAND TYPE"] == "FC"]
@@ -266,19 +234,19 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         .reset_index()
     )
 
-    comp_p = pd.merge(
-        plan_p,
-        req_p,
-        on=grp_product,
-        how="outer",
-        suffixes=("_PLAN", "_REQ")
-    ).fillna(0)
+    comp_p = pd.merge(plan_p, req_p, on=grp_product, how="outer", suffixes=("_PLAN", "_REQ")).fillna(0)
 
     step1_product_fc = comp_p[grp_product].copy()
     for m in meses:
         step1_product_fc[m] = comp_p[f"{m}_REQ"] - comp_p[f"{m}_PLAN"]
 
     step1_product_fc["TOTAL"] = step1_product_fc[meses].sum(axis=1)
+
+    total_prod = {c: "TOTAL GERAL" for c in grp_product}
+    for m in meses:
+        total_prod[m] = step1_product_fc[m].sum()
+    total_prod["TOTAL"] = step1_product_fc["TOTAL"].sum()
+    step1_product_fc = pd.concat([step1_product_fc, pd.DataFrame([total_prod])], ignore_index=True)
 
     # =================================================
     # EXPORTAR EXCEL (FORMATADO)
@@ -288,22 +256,23 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
 
     buf_out = io.BytesIO()
     with pd.ExcelWriter(buf_out, engine="openpyxl") as writer:
-
+        # Regravar todas as abas originais
         for sheet in xls_original.sheet_names:
             pd.read_excel(xls_original, sheet).to_excel(
                 writer, sheet_name=sheet, index=False
             )
 
+        # Abas de saída (mantidas) + NOVA ABA
         abas = {
             "Step1_Comparativo_Serie": step1_serie,
             "Step1_Comparativo_Need": step1_need,
-            "Resumo_Request_Product_Need": step1_need,  # original mantido
-            "Step1_Comparativo_Product_FC": step1_product_fc
+            "Resumo_Request_Product_Need": req_need,
+            "REQ x PLAN FC - Produto Mensal": step1_product_fc,
         }
 
+        # Gravação e formatação numérica/cor/largura
         for nome, df in abas.items():
             df.to_excel(writer, sheet_name=nome, index=False)
-
             ws = writer.book[nome]
             cols_num = df.select_dtypes(include="number").columns
             idx_cols = [df.columns.get_loc(c) + 1 for c in cols_num]
@@ -312,12 +281,12 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
                 for idx in idx_cols:
                     cell = row[idx - 1]
                     if isinstance(cell.value, (int, float)):
-                        cell.number_format = "#,##0"
+                        cell.number_format = '#,##0'
                         if cell.value < 0:
                             cell.font = Font(color="FF0000", bold=True)
                         elif cell.value > 0:
                             cell.font = Font(color="008000", bold=True)
-
+                # Destacar TOTAL GERAL
                 if str(row[0].value).upper() == "TOTAL GERAL":
                     for cell in row:
                         cell.font = Font(bold=True)
@@ -329,8 +298,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
                 )
                 ws.column_dimensions[get_column_letter(col[0].column)].width = max_len + 2
 
-    return buf_out.getvalue(), step1_serie, step1_need
-
+    return buf_out.getvalue(), step1_serie, step1_need, req_need
 
 # =====================================================
 # UI
@@ -339,13 +307,16 @@ uploaded = st.file_uploader("Envie o Excel (PLAN e REQUEST)", type=["xlsx"])
 debug = st.checkbox("Exibir diagnóstico", value=False)
 
 if uploaded:
-    excel_out, df_serie, df_need = gerar_passo1(uploaded.read(), debug)
+    excel_out, df_serie, df_need, df_req_need = gerar_passo1(uploaded.read(), debug)
 
     st.subheader("Comparativo por PRODUCT NEED + PRODUCT SERIES")
     st.dataframe(formatar_tabela(df_serie), use_container_width=True)
 
     st.subheader("Resumo por PRODUCT NEED (REQ - PLAN)")
     st.dataframe(formatar_tabela(df_need), use_container_width=True)
+
+    st.subheader("Resumo por PRODUCT NEED (REQUEST)")
+    st.dataframe(formatar_tabela(df_req_need), use_container_width=True)
 
     st.download_button(
         "⬇️ Baixar Excel",
@@ -354,3 +325,10 @@ if uploaded:
     )
 else:
     st.info("Faça upload do Excel para iniciar.")
+'''
+
+with open('streamlit_app.py', 'w', encoding='utf-8') as f:
+    f.write(content)
+
+print('OK')
+
