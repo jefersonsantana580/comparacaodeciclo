@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 import io
 import re
@@ -226,48 +225,35 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
 
     # =================================================
     # >>> ADIÇÃO — PRODUCT · FC · DELTA MENSAL (REQ - PLAN)
+    # Mantém exatamente o padrão de colunas das abas originais (todas as
+    # colunas ANTES do 1º mês, inclusive as entre DEMAND TYPE e o 1º mês)
     # =================================================
     plan_fc = plan[plan["DEMAND TYPE"] == "FC"]
     req_fc  = req [req ["DEMAND TYPE"] == "FC"]
 
-    grp_product = [
-        "CONCATENAR",
-        "SITE",
-        "PRODUCT",
-        "PRODUCT BRAND",
-        "PRODUCT SERIES",
-        "PRODUCT MODEL VERSION",
-        "PRODUCT MARKET",
-        "DEMAND TYPE",
-    ]
+    # Descobrir dinamicamente a posição do 1º mês no PLAN
+    month_positions = [plan.columns.get_loc(c) for c in meses if c in plan.columns]
+    first_month_pos = min(month_positions)
+    meta_cols = list(plan.columns[:first_month_pos])  # TODAS as colunas de metadados
 
-    plan_p = (
-        plan_fc[grp_product + meses]
-        .groupby(grp_product, dropna=False)[meses]
-        .sum()
-        .reset_index()
-    )
-    req_p = (
-        req_fc[grp_product + meses]
-        .groupby(grp_product, dropna=False)[meses]
-        .sum()
-        .reset_index()
-    )
+    # Agregar por TODAS as colunas de metadados
+    plan_p = plan_fc[meta_cols + meses].groupby(meta_cols, dropna=False)[meses].sum().reset_index()
+    req_p  = req_fc [meta_cols + meses].groupby(meta_cols, dropna=False)[meses].sum().reset_index()
 
     comp_p = pd.merge(
         plan_p, req_p,
-        on=grp_product, how="outer",
+        on=meta_cols, how="outer",
         suffixes=("_PLAN", "_REQ")
     ).fillna(0)
 
-    # Meses com APENAS o DELTA (REQ − PLAN), mantendo cabeçalho padrão
-    step1_product_fc = comp_p[grp_product].copy()
+    # Construir a planilha no mesmo layout, com meses = DELTA (REQ − PLAN)
+    step1_product_fc = comp_p[meta_cols].copy()
     for m in meses:
         step1_product_fc[m] = comp_p[f"{m}_REQ"] - comp_p[f"{m}_PLAN"]
     step1_product_fc["TOTAL"] = step1_product_fc[meses].sum(axis=1)
 
-    # Linha TOTAL GERAL (mesma lógica dos quadros existentes)
-    total_prod = {c: "TOTAL GERAL" for c in grp_product}
+    # Linha TOTAL GERAL (mesma regra das demais)
+    total_prod = {c: "TOTAL GERAL" for c in meta_cols}
     for m in meses:
         total_prod[m] = step1_product_fc[m].sum()
     total_prod["TOTAL"] = step1_product_fc["TOTAL"].sum()
@@ -290,7 +276,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
             "Step1_Comparativo_Serie": step1_serie,
             "Step1_Comparativo_Need": step1_need,
             "Resumo_Request_Product_Need": req_need,
-            # >>> ADIÇÃO: nova aba com FC por PRODUCT (delta mensal)
+            # Nova aba com TODAS as colunas de metadados preservadas
             "REQ x PLAN FC - Produto Mensal": step1_product_fc,
         }
 
@@ -317,8 +303,8 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
 
             for col in ws.columns:
                 max_len = max(
-                    len(str(cell.value)) if cell.value is not None else 0
-                    for cell in col
+                    len(str(cell.value)) if cell.value is not None else 0,
+                    *[0]
                 )
                 ws.column_dimensions[get_column_letter(col[0].column)].width = max_len + 2
 
