@@ -348,4 +348,4 @@ if uploaded:
         file_name="saida_step1.xlsx"
     )
 else:
-    st.info("Faça upload do Excel para ini
+    st.info("Faça upload do Excel para iniciar.")
