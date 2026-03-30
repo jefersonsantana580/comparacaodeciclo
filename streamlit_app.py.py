@@ -325,4 +325,11 @@ if uploaded:
     )
 else:
     st.info("Faça upload do Excel para iniciar.")
+'''
+
+with open('streamlit_app.py', 'w', encoding='utf-8') as f:
+    f.write(content)
+
+print('OK')
+
 
