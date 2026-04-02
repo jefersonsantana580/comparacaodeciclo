@@ -84,7 +84,7 @@ def formatar_tabela(df):
     return (
         df.style
         .format(lambda x: f"{x:,.0f}".replace(",", "."), subset=cols_num)
-        .applymap(colorir_valores, subset=cols_num)
+        .map(colorir_valores, subset=cols_num)
         .set_properties(subset=cols_num, **{"text-align": "center"})
         .set_properties(subset=df.columns.difference(cols_num),
                         **{"text-align": "left"})
