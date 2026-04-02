@@ -126,7 +126,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         vals = sorted(df[col].dropna().unique())
         return st.multiselect(col, vals, default=vals)
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
         f_brand = filtro_mult(plan, "PRODUCT BRAND")
     with c2:
@@ -135,6 +135,8 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         f_site = filtro_mult(plan, "SITE")
     with c4:
         f_need = filtro_mult(plan, "PRODUCT NEED")
+    with c5:
+        f_series = filtro_mult(plan, "PRODUCT SERIES")
 
     def aplicar_filtros(df):
         if f_brand is not None:
@@ -145,6 +147,8 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
             df = df[df["SITE"].isin(f_site)]
         if f_need is not None:
             df = df[df["PRODUCT NEED"].isin(f_need)]
+           if f_need is not None:
+            df = df[df["PRODUCT SERIES"].isin(f_series)]
         return df
 
     plan = aplicar_filtros(plan)
