@@ -151,8 +151,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         if f_series is not None:
         df = df[df["PRODUCT SERIES"].isin(f_series)]
 
-
-        return df
+return df
 
     plan = aplicar_filtros(plan)
     req  = aplicar_filtros(req)
