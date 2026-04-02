@@ -126,6 +126,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         vals = sorted(df[col].dropna().unique())
         return st.multiselect(col, vals, default=vals)
 
+st.subheader("Filtros")
    
 c1, c2, c3, c4, c5 = st.columns(5)
 
