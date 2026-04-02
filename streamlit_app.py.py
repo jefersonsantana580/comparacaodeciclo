@@ -136,7 +136,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
     with c4:
         f_need = filtro_mult(plan, "PRODUCT NEED")
     with c5:
-    f_series = filtro_mult(plan, "PRODUCT SERIES")
+        f_series = filtro_mult(plan, "PRODUCT SERIES")
 
    
     def aplicar_filtros(df):
