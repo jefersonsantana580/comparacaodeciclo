@@ -135,9 +135,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         f_site = filtro_mult(plan, "SITE")
     with c4:
         f_need = filtro_mult(plan, "PRODUCT NEED")
-    with c5:
-        f_series = filtro_mult(plan, "PRODUCT SERIES")
-
+   
     def aplicar_filtros(df):
         if f_brand is not None:
             df = df[df["PRODUCT BRAND"].isin(f_brand)]
@@ -147,8 +145,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
             df = df[df["SITE"].isin(f_site)]
         if f_need is not None:
             df = df[df["PRODUCT NEED"].isin(f_need)]
-        if f_series is not None:
-            df = df[df["PRODUCT SERIES"].isin(f_series)]
+
         return df
 
     plan = aplicar_filtros(plan)
