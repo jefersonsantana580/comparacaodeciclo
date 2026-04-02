@@ -149,7 +149,7 @@ def gerar_passo1(xlsx_bytes, show_debug=False):
         if f_need is not None:
             df = df[df["PRODUCT NEED"].isin(f_need)]
         if f_series is not None:
-        df = df[df["PRODUCT SERIES"].isin(f_series)]
+            df = df{df{"PRODUCT SERIES"].isin(f_series)]
 
 return df
 
